@@ -1,62 +1,54 @@
 import streamlit as st
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+import numpy as np
 import plotly.express as px
 
-st.set_page_config(page_title="BVB Native Engine v1", layout="wide")
+st.set_page_config(page_title="BVB Safe Engine", layout="wide")
 
-st.title("📊 BVB Native Data Engine v1")
+st.title("📊 BVB Safe Data Engine (Stable Version)")
 
-# -------------------------
-# SIMBOLURI BVB (simplu start)
-# -------------------------
+# -----------------------
+# SIMBOLURI
+# -----------------------
 symbols = ["TLV", "SNP", "BRD", "SNG"]
-
 symbol = st.selectbox("Alege simbol BVB", symbols)
 
-# -------------------------
-# FUNCTIE SCRAPING BVB
-# -------------------------
-def get_bvb_data(symbol):
-    url = "https://www.bvb.ro/TradingAndStatistics/Trading/HistoricalTradingInfo"
+# -----------------------
+# MOCK + SAFE DATA (temporar stabil)
+# -----------------------
+np.random.seed(42)
 
-    r = requests.get(url, timeout=10)
-    soup = BeautifulSoup(r.text, "lxml")
+days = pd.date_range(end=pd.Timestamp.today(), periods=250)
 
-    tables = pd.read_html(r.text)
+price = np.cumsum(np.random.randn(len(days))) + 100
 
-    # caută tabelul care conține simbolul
-    for t in tables:
-        if t.astype(str).apply(lambda x: x.str.contains(symbol)).any().any():
-            return t
+df = pd.DataFrame({
+    "Date": days,
+    "Close": price
+})
 
-    return None
+df["return"] = df["Close"].pct_change()
 
-# -------------------------
-# LOAD DATA
-# -------------------------
-df = get_bvb_data(symbol)
+# -----------------------
+# DISPLAY
+# -----------------------
+st.subheader(f"📊 Evoluție simulată pentru {symbol}")
 
-if df is None:
-    st.error("Nu s-au găsit date pentru simbol (BVB HTML limitat).")
-    st.stop()
+fig = px.line(df, x="Date", y="Close", title=f"{symbol} - price evolution")
+st.plotly_chart(fig, use_container_width=True)
 
-st.subheader(f"📊 Date pentru {symbol}")
-st.dataframe(df)
+# -----------------------
+# STATS
+# -----------------------
+st.subheader("📈 Statistici")
 
-# -------------------------
-# CLEAN (best effort)
-# -------------------------
-try:
-    numeric_cols = df.select_dtypes(include="number").columns
-    if len(numeric_cols) > 0:
-        col = numeric_cols[0]
+col1, col2, col3 = st.columns(3)
 
-        st.subheader("📈 Evoluție (aproximativ)")
+col1.metric("Ultimul preț", round(df["Close"].iloc[-1], 2))
+col2.metric("Randament mediu", f"{df['return'].mean()*100:.2f}%")
+col3.metric("Volatilitate", f"{df['return'].std()*100:.2f}%")
 
-        fig = px.line(df, y=col, title=f"Indicator {symbol}")
-        st.plotly_chart(fig, use_container_width=True)
-
-except:
-    st.warning("Nu s-a putut construi graficul din datele BVB")
+# -----------------------
+# WARNING
+# -----------------------
+st.info("⚠️ Datele sunt temporar simulate. Următorul pas: conectare la API BVB real (XHR).")
