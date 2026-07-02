@@ -1,107 +1,62 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 import plotly.express as px
 
-st.set_page_config(page_title="BVB Portfolio System", layout="wide")
+st.set_page_config(page_title="BVB Native Engine v1", layout="wide")
 
-st.title("📊 BVB Portfolio Analyzer v2 (Stable)")
+st.title("📊 BVB Native Data Engine v1")
 
-# -----------------------
-# STOCK LIST
-# -----------------------
-stocks = ["TLV.BX", "SNP.BX", "BRD.BX", "SNG.BX"]
+# -------------------------
+# SIMBOLURI BVB (simplu start)
+# -------------------------
+symbols = ["TLV", "SNP", "BRD", "SNG"]
 
-data = {}
-results = []
+symbol = st.selectbox("Alege simbol BVB", symbols)
 
-# -----------------------
-# DOWNLOAD DATA SAFELY
-# -----------------------
-for s in stocks:
-    try:
-        df = yf.download(s, period="1y", progress=False)
+# -------------------------
+# FUNCTIE SCRAPING BVB
+# -------------------------
+def get_bvb_data(symbol):
+    url = "https://www.bvb.ro/TradingAndStatistics/Trading/HistoricalTradingInfo"
 
-        # safety checks (IMPORTANT FIX)
-        if df is None or df.empty or "Close" not in df.columns or len(df) < 2:
-            continue
+    r = requests.get(url, timeout=10)
+    soup = BeautifulSoup(r.text, "lxml")
 
-        df["return"] = df["Close"].pct_change()
+    tables = pd.read_html(r.text)
 
-        data[s] = df
+    # caută tabelul care conține simbolul
+    for t in tables:
+        if t.astype(str).apply(lambda x: x.str.contains(symbol)).any().any():
+            return t
 
-        total_return = (df["Close"].iloc[-1] / df["Close"].iloc[0]) - 1
-        volatility = df["return"].std()
+    return None
 
-        results.append({
-            "Stock": s,
-            "Return (%)": total_return * 100,
-            "Volatility (%)": volatility * 100
-        })
+# -------------------------
+# LOAD DATA
+# -------------------------
+df = get_bvb_data(symbol)
 
-    except Exception as e:
-        st.warning(f"Nu s-au putut încărca date pentru {s}")
-        continue
-
-# -----------------------
-# HANDLE EMPTY CASE
-# -----------------------
-if len(results) == 0:
-    st.error("Nu s-au putut încărca date pentru niciun simbol.")
+if df is None:
+    st.error("Nu s-au găsit date pentru simbol (BVB HTML limitat).")
     st.stop()
 
-res_df = pd.DataFrame(results)
+st.subheader(f"📊 Date pentru {symbol}")
+st.dataframe(df)
 
-# -----------------------
-# DISPLAY TABLE
-# -----------------------
-st.subheader("📊 Comparație acțiuni BVB")
+# -------------------------
+# CLEAN (best effort)
+# -------------------------
+try:
+    numeric_cols = df.select_dtypes(include="number").columns
+    if len(numeric_cols) > 0:
+        col = numeric_cols[0]
 
-st.dataframe(res_df)
+        st.subheader("📈 Evoluție (aproximativ)")
 
-# -----------------------
-# RETURN CHART
-# -----------------------
-fig = px.bar(
-    res_df,
-    x="Stock",
-    y="Return (%)",
-    title="Randamente 1 an"
-)
+        fig = px.line(df, y=col, title=f"Indicator {symbol}")
+        st.plotly_chart(fig, use_container_width=True)
 
-st.plotly_chart(fig, use_container_width=True)
-
-# -----------------------
-# PORTFOLIO SIMULATION
-# -----------------------
-st.subheader("💰 Portofoliu simulat")
-
-investment = st.slider("Investiție totală (€)", 1000, 100000, 10000)
-
-weights = {s: 1/len(results) for s in res_df["Stock"]}
-
-final_value = 0
-
-for r in results:
-    stock = r["Stock"]
-    growth = (r["Return (%)"] / 100) + 1
-
-    final_value += investment * weights[stock] * growth
-
-st.metric("Valoare finală portofoliu", f"{final_value:.2f} €")
-st.metric("Profit", f"{final_value - investment:.2f} €")
-
-# -----------------------
-# RISK vs RETURN
-# -----------------------
-st.subheader("⚖️ Risc vs Randament")
-
-fig2 = px.scatter(
-    res_df,
-    x="Volatility (%)",
-    y="Return (%)",
-    text="Stock",
-    title="Risk vs Return"
-)
-
-st.plotly_chart(fig2, use_container_width=True)
+except:
+    st.warning("Nu s-a putut construi graficul din datele BVB")
