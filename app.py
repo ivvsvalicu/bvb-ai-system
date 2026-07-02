@@ -5,71 +5,94 @@ import plotly.express as px
 
 st.set_page_config(page_title="BVB Portfolio System", layout="wide")
 
-st.title("📊 BVB Portfolio Analyzer v2")
+st.title("📊 BVB Portfolio Analyzer v2 (Stable)")
 
 # -----------------------
-# SELECT STOCKS
+# STOCK LIST
 # -----------------------
 stocks = ["TLV.BX", "SNP.BX", "BRD.BX", "SNG.BX"]
 
 data = {}
-
-for s in stocks:
-    df = yf.download(s, period="1y")
-    df["return"] = df["Close"].pct_change()
-    data[s] = df
-
-# -----------------------
-# PERFORMANCE TABLE
-# -----------------------
 results = []
 
-for s, df in data.items():
-    total_return = (df["Close"].iloc[-1] / df["Close"].iloc[0]) - 1
-    volatility = df["return"].std()
+# -----------------------
+# DOWNLOAD DATA SAFELY
+# -----------------------
+for s in stocks:
+    try:
+        df = yf.download(s, period="1y", progress=False)
 
-    results.append({
-        "Stock": s,
-        "Return (%)": total_return * 100,
-        "Volatility (%)": volatility * 100
-    })
+        # safety checks (IMPORTANT FIX)
+        if df is None or df.empty or "Close" not in df.columns or len(df) < 2:
+            continue
+
+        df["return"] = df["Close"].pct_change()
+
+        data[s] = df
+
+        total_return = (df["Close"].iloc[-1] / df["Close"].iloc[0]) - 1
+        volatility = df["return"].std()
+
+        results.append({
+            "Stock": s,
+            "Return (%)": total_return * 100,
+            "Volatility (%)": volatility * 100
+        })
+
+    except Exception as e:
+        st.warning(f"Nu s-au putut încărca date pentru {s}")
+        continue
+
+# -----------------------
+# HANDLE EMPTY CASE
+# -----------------------
+if len(results) == 0:
+    st.error("Nu s-au putut încărca date pentru niciun simbol.")
+    st.stop()
 
 res_df = pd.DataFrame(results)
 
-st.subheader("📊 Comparatie actiuni")
+# -----------------------
+# DISPLAY TABLE
+# -----------------------
+st.subheader("📊 Comparație acțiuni BVB")
 
 st.dataframe(res_df)
 
-fig = px.bar(res_df, x="Stock", y="Return (%)", title="Randamente 1 an")
+# -----------------------
+# RETURN CHART
+# -----------------------
+fig = px.bar(
+    res_df,
+    x="Stock",
+    y="Return (%)",
+    title="Randamente 1 an"
+)
+
 st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------
-# PORTOFOLIO SIMULATION
+# PORTFOLIO SIMULATION
 # -----------------------
 st.subheader("💰 Portofoliu simulat")
 
-investment = st.slider("Investitie totala (€)", 1000, 100000, 10000)
+investment = st.slider("Investiție totală (€)", 1000, 100000, 10000)
 
-weights = {s: 1/len(stocks) for s in stocks}
+weights = {s: 1/len(results) for s in res_df["Stock"]}
 
-portfolio_values = []
+final_value = 0
 
-for s, df in data.items():
-    start = df["Close"].iloc[0]
-    end = df["Close"].iloc[-1]
+for r in results:
+    stock = r["Stock"]
+    growth = (r["Return (%)"] / 100) + 1
 
-    growth = end / start
+    final_value += investment * weights[stock] * growth
 
-    value = investment * weights[s] * growth
-    portfolio_values.append(value)
-
-final_value = sum(portfolio_values)
-
-st.metric("Valoare finala portofoliu", f"{final_value:.2f} €")
+st.metric("Valoare finală portofoliu", f"{final_value:.2f} €")
 st.metric("Profit", f"{final_value - investment:.2f} €")
 
 # -----------------------
-# RISK VIEW
+# RISK vs RETURN
 # -----------------------
 st.subheader("⚖️ Risc vs Randament")
 
